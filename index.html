@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>다항식의 계산</title>
+  <!-- MathJax 불러오기 -->
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+  <style>
+    body {
+      background-color: #000;   /* 검정 바탕 */
+      color: #fff;             /* 흰색 글자 */
+      font-family: sans-serif;
+      margin: 20px;
+    }
+    #quizContainer {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid #fff;
+    }
+    .energy-bar {
+      width: 200px;
+      height: 20px;
+      background: #555;
+      margin-bottom: 5px;
+      position: relative;
+    }
+    .energy-fill {
+      width: 100%;
+      height: 100%;
+      background: #fff;
+      transition: width 0.2s linear;
+    }
+    button {
+      background-color: #fff;
+      color: #000;
+      border: 1px solid #000;
+      margin: 5px;
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #ccc;
+    }
+    #response {
+      margin-top: 10px;
+      white-space: pre;
+    }
+  </style>
+</head>
+<body>
+
+<h1>다항식의 계산</h1>
+
+<!-- 난이도 선택 화면 -->
+<div id="startScreen">
+  <label>이름을 입력하세요:</label><br>
+  <input type="text" id="playerName" placeholder="이름" /><br><br>
+
+  <label>난이도를 선택하세요:</label><br>
+  <button onclick="selectDifficulty('top')">최상</button>
+  <button onclick="selectDifficulty('high')">상</button>
+  <button onclick="selectDifficulty('mid')">중</button>
+  <button onclick="selectDifficulty('low')">하</button>
+</div>
+
+<!-- 퀴즈 화면 -->
+<div id="quizContainer" style="display:none;">
+  <div>전체 게임 시간: <span id="totalTime">0</span>초</div>
+  <div>남은 기회: <span id="lives">3</span></div>
+  <div>점수: <span id="score">0</span></div>
+  
+  <div class="energy-bar" id="energyBar" style="display:none;">
+    <div class="energy-fill" id="energyFill"></div>
+  </div>
+  
+  <div id="questionText" style="margin:10px 0;"></div>
+  <div id="choices"></div>
+</div>
+
+<!-- 게임 종료 화면 -->
+<div id="gameOverScreen" style="display:none;">
+  <h2>게임 종료!</h2>
+  <p>최종 점수: <span id="finalScore"></span></p>
+  <button onclick="sendScore()">점수전송</button>
+  <div id="response"></div>
+</div>
+
+<script>
+// 난이도별 시간 설정 (초)
+let timePerQuestion = 40;  // 기본값(중)
+let totalElapsed = 0;      // 전체 경과 시간
+let timerInterval = null;  // 문제별 타이머
+let totalTimerInterval = null; // 전체 시간 측정용
+
+// 기회, 점수, 현재 문제 인덱스
+let lives = 3;
+let score = 0;
+let currentQuestionIndex = 0;
+
+// 모든 문제를 담은 배열 (37문제). 각 문제마다: statement, options[4], correctIndex (원본 배열에서의 인덱스)
+const questions = [
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((a + 3b) + (3a - 4b)\\)",
+    options: ["\\(4a - b\\)", "\\(4a + b\\)", "\\(-4a - b\\)", "\\(7a - 7b\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((2x + 5y) + (4x + y)\\)",
+    options: ["\\(6x + 6y\\)", "\\(2x + 4y\\)", "\\(-6x + 6y\\)", "\\(6x - 6y\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((3a + 6b) + (4a + 8b)\\)",
+    options: ["\\(7a + 14b\\)", "\\(12ab\\)", "\\(-a + 2b\\)", "\\(7a - 2b\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((6a + 10b) + (a - 4b)\\)",
+    options: ["\\(5a + 14b\\)", "\\(-7a - 6b\\)", "\\(7a + 6b\\)", "\\(7a - 14b\\)"],
+    correctIndex: 2
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((5x + 3y) + (3x - 5y)\\)",
+    options: ["\\(8x - 2y\\)", "\\(2x + 8y\\)", "\\(-2x - 8y\\)", "\\(8x + 2y\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((5x - 4y) + (4x + 3y)\\)",
+    options: ["\\(-x - y\\)", "\\(9x - y\\)", "\\(9x + y\\)", "\\(5x + 7y\\)"],
+    correctIndex: 1
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((2x - 3y - 8z) - (7x + y - 4z)\\)",
+    options: ["\\(-5x - 4y - 4z\\)", "\\(-9x - 2y + 4z\\)", "\\(-5x + 4y + 4z\\)", "\\(-9x + 2y - 4z\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((5x - 3y - 1) - (5x - 4y - 6)\\)",
+    options: ["\\(-y + 5\\)", "\\(-y - 5\\)", "\\(-5x + y + 7\\)", "\\(x - y + 5\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((3a + 2b - 5) - (4a - 6b + 7)\\)",
+    options: ["\\(-a + 8b - 12\\)", "\\(-a - 8b + 12\\)", "\\(-7a + 8b + 2\\)", "\\(a - 8b - 12\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((4a - 6b + 5c) - (2a + 8b - 3c)\\)",
+    options: ["\\(2a - 14b + 8c\\)", "\\(2a + 14b - 8c\\)", "\\(-2a - 14b + 2c\\)", "\\(6a + 2b - 2c\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(\\left(\\dfrac{1}{2}x + \\dfrac{1}{4}y\\right) + \\left(\\dfrac{4}{3}x - \\dfrac{1}{2}y\\right)\\)",
+    options: [
+      "\\(\\dfrac{11}{6}x - \\dfrac{1}{4}y\\)",
+      "\\(\\dfrac{11}{6}x + \\dfrac{1}{4}y\\)",
+      "\\(\\dfrac{7}{6}x - \\dfrac{3}{4}y\\)",
+      "\\(\\dfrac{5}{6}x + \\dfrac{1}{4}y\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(\\dfrac{3x + y}{4} + \\dfrac{x - y}{2}\\)",
+    options: [
+      "\\(\\dfrac{5x - y}{4}\\)",
+      "\\(\\dfrac{5x + y}{4}\\)",
+      "\\(\\dfrac{4x - 2y}{4}\\)",
+      "\\(\\dfrac{3x - y}{2}\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(\\dfrac{2x + 5y}{4} - \\dfrac{x + y}{6}\\)",
+    options: [
+      "\\(\\dfrac{4x + 13y}{12}\\)",
+      "\\(\\dfrac{4x - 13y}{12}\\)",
+      "\\(\\dfrac{13x + 4y}{12}\\)",
+      "\\(\\dfrac{6x + 4y}{12}\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(\\dfrac{2}{3}(6a - 12) + \\dfrac{1}{2}(4 - 2a)\\)",
+    options: ["\\(3a - 6\\)", "\\(3a + 6\\)", "\\(-3a - 6\\)", "\\(-3a + 6\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(\\dfrac{2}{5}(10x - 5) + \\dfrac{1}{2}(8 - 4x)\\)",
+    options: ["\\(2x + 2\\)", "\\(6x - 2\\)", "\\(-2x + 2\\)", "\\(2x - 2\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(\\dfrac{4a + b}{3} + \\dfrac{a - b}{2}\\)",
+    options: [
+      "\\(\\dfrac{11a - b}{6}\\)",
+      "\\(\\dfrac{5a + 5b}{6}\\)",
+      "\\(\\dfrac{11a + b}{6}\\)",
+      "\\(\\dfrac{a - b}{5}\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(2a - \\dfrac{8a + 3}{5}\\)",
+    options: [
+      "\\(\\dfrac{2a - 3}{5}\\)",
+      "\\(\\dfrac{10a - 8a + 3}{5}\\)",
+      "\\(\\dfrac{2a - 3}{3}\\)",
+      "\\(\\dfrac{2a + 3}{5}\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(\\dfrac{1}{6}(4a + b) - \\dfrac{2}{3}(a - b)\\)",
+    options: [
+      "\\(\\dfrac{5}{6}b\\)",
+      "\\(\\dfrac{5}{6}a\\)",
+      "\\(\\dfrac{5}{6}a + \\dfrac{5}{6}b\\)",
+      "\\(-\\dfrac{5}{6}b\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(\\dfrac{2(2a + b)}{3} - \\dfrac{a - 3b}{5}\\)",
+    options: [
+      "\\(\\dfrac{17a + 19b}{15}\\)",
+      "\\(\\dfrac{19a + 17b}{15}\\)",
+      "\\(\\dfrac{17a - 19b}{15}\\)",
+      "\\(\\dfrac{19a - 17b}{15}\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(\\dfrac{4a - 2b}{7} - \\dfrac{a - 3b}{2}\\)",
+    options: [
+      "\\(\\dfrac{a + 17b}{14}\\)",
+      "\\(\\dfrac{a - 17b}{14}\\)",
+      "\\(\\dfrac{5a + b}{14}\\)",
+      "\\(\\dfrac{5a - b}{14}\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(\\dfrac{a + 3}{2} - \\dfrac{a + 5}{3}\\)",
+    options: [
+      "\\(\\dfrac{a - 1}{6}\\)",
+      "\\(\\dfrac{2a + 8}{6}\\)",
+      "\\(\\dfrac{a + 1}{6}\\)",
+      "\\(\\dfrac{-a - 1}{6}\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((8x^2 + 3x - 4) - (3x^2 - 2x + 4)\\)",
+    options: [
+      "\\(5x^2 + 5x - 8\\)",
+      "\\(5x^2 + x - 8\\)",
+      "\\(-11x^2 + 5x - 8\\)",
+      "\\(5x^2 - 5x + 8\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((6a^2 - 2a + 3) - (2a^2 + a - 7)\\)",
+    options: [
+      "\\(4a^2 - 3a + 10\\)",
+      "\\(4a^2 + 3a - 10\\)",
+      "\\(8a^2 - a + 4\\)",
+      "\\(-4a^2 + a + 10\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((4a^2 + a + 3) - (-4a^2 - 5a - 9)\\)",
+    options: [
+      "\\(8a^2 + 6a + 12\\)",
+      "\\(-8a^2 + 6a + 12\\)",
+      "\\(8a^2 - 6a - 12\\)",
+      "\\(8a^2 + 6a - 12\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((3a^2 + 2a - 1) - (5a^2 + a + 4)\\)",
+    options: [
+      "\\(-2a^2 + a - 5\\)",
+      "\\(2a^2 - a + 3\\)",
+      "\\(-8a^2 - 3a + 5\\)",
+      "\\(-2a^2 + 3a - 5\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((-8x^2 + 4x - 1) - (-7x^2 + 5x - 4)\\)",
+    options: [
+      "\\(-x^2 - x + 3\\)",
+      "\\(-x^2 + 9x - 3\\)",
+      "\\(-15x^2 + 9x + 3\\)",
+      "\\(-x^2 - 9x - 3\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\((7x^2 - 3x) - (5x^2 - x + 8)\\)",
+    options: [
+      "\\(2x^2 - 2x - 8\\)",
+      "\\(12x^2 - 2x - 8\\)",
+      "\\(2x^2 - 4x + 8\\)",
+      "\\(-2x^2 + 2x - 8\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(2a + b - \\{ b - (2a - 3b) \\}\\)",
+    options: ["\\(4a - 3b\\)", "\\(-4a - 3b\\)", "\\(4a + 3b\\)", "\\(-3a + 4b\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(5x + \\{ 2y - (2x - 3y) \\}\\)",
+    options: ["\\(3x + 5y\\)", "\\(-3x - 5y\\)", "\\(7x + 5y\\)", "\\(3x - y\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(a + \\{ 2b - (4a + b) \\}\\)",
+    options: ["\\(-3a + b\\)", "\\(-3a - b\\)", "\\(3a - b\\)", "\\(-a + 3b\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(3x + \\{ 2x - 5y - (x - y) \\}\\)",
+    options: ["\\(4x - 4y\\)", "\\(x + 4y\\)", "\\(4x + 4y\\)", "\\(-4x - 4y\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(x - 3y - \\{ x - (2x + 7y) \\}\\)",
+    options: ["\\(2x + 4y\\)", "\\(-2x + 4y\\)", "\\(2x - 4y\\)", "\\(-2x - 4y\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(a + 2b - \\{ b - (7a - 6b) \\}\\)",
+    options: ["\\(8a - 5b\\)", "\\(-8a + 5b\\)", "\\(5a - 8b\\)", "\\(-5a + 8b\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(2x + 5y - \\{ 3x - (4x - y) \\}\\)",
+    options: ["\\(3x + 4y\\)", "\\(-3x + 4y\\)", "\\(3x - 4y\\)", "\\(-3x - 4y\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(-\\,a - \\bigl[\\,3b - \\{ 9a - 4b - (2a - 3b)\\}\\bigr]\\)",
+    options: ["\\(6a - 4b\\)", "\\(-6a - 4b\\)", "\\(6a + 4b\\)", "\\(-6a + 4b\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(2x^2 - \\bigl[\\,4x - \\{ 3x^2 + 2x - (3x - 2) + 4\\}\\bigr]\\)",
+    options: [
+      "\\(5x^2 - 5x + 6\\)",
+      "\\(-5x^2 + 5x + 6\\)",
+      "\\(5x^2 + 5x - 6\\)",
+      "\\(-5x^2 - 5x - 6\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(3x^2 - \\bigl[\\,2x^2 - \\{ 5x^2 - (3x - 4) \\}\\bigr]\\)",
+    options: [
+      "\\(6x^2 - 3x + 4\\)",
+      "\\(-6x^2 + 3x + 4\\)",
+      "\\(6x^2 + 3x - 4\\)",
+      "\\(-3x^2 + 6x - 4\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(2b^2 - \\bigl[\\,7b - 5 + \\{ b^2 - 3b - (4b + 1) \\}\\bigr]\\)",
+    options: ["\\(b^2 + 6\\)", "\\(-b^2 + 6\\)", "\\(b^2 - 6\\)", "\\(2b^2 + 6\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(4x^2 + \\bigl[\\,2x^2 - 3x - \\{ 5x^2 + 4x - (2x^2 - 7x) \\}\\bigr]\\)",
+    options: ["\\(3x^2 - 14x\\)", "\\(-3x^2 + 14x\\)", "\\(7x^2 - 14x\\)", "\\(3x^2 + 14x\\)"],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(3x^2 - \\bigl[\\,5 - \\{ -4x^2 - (x^2 - 4) + 6x \\}\\bigr]\\)",
+    options: [
+      "\\(-2x^2 + 6x - 1\\)",
+      "\\(2x^2 - 6x + 1\\)",
+      "\\(-5x^2 - 6x + 1\\)",
+      "\\(-2x^2 - 6x + 1\\)"
+    ],
+    correctIndex: 0
+  },
+  {
+    statement: "다음 식을 간단히 하여라.<br>\\(-\\bigl[\\,3x^2 - \\{ 7x - (6 - 9x) - 2x^2 \\}\\bigr]\\)",
+    options: [
+      "\\(-5x^2 + 16x - 6\\)",
+      "\\(5x^2 - 16x + 6\\)",
+      "\\(-5x^2 - 16x + 6\\)",
+      "\\(5x^2 + 16x - 6\\)"
+    ],
+    correctIndex: 0
+  }
+];
+
+// 난이도 선택 후 퀴즈 준비
+function selectDifficulty(level) {
+  let playerNameInput = document.getElementById("playerName").value.trim();
+  if (!playerNameInput) {
+    alert("이름을 입력하세요!");
+    return;
+  }
+  if (level === "top") {
+    timePerQuestion = 20;
+  } else if (level === "high") {
+    timePerQuestion = 30;
+  } else if (level === "mid") {
+    timePerQuestion = 40;
+  } else if (level === "low") {
+    timePerQuestion = Infinity;  // 시간제한 없음
+  }
+
+  // 시작화면 숨기고 퀴즈화면 보이기
+  document.getElementById("startScreen").style.display = "none";
+  document.getElementById("quizContainer").style.display = "block";
+
+  // 전체 타이머 시작
+  totalTimerInterval = setInterval(() => {
+    totalElapsed++;
+    document.getElementById("totalTime").textContent = totalElapsed;
+  }, 1000);
+
+  initQuiz();
+}
+
+// 문제 배열을 무작위로 섞기
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    let j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+}
+
+function initQuiz() {
+  // 문제 전체를 섞는다(한 바퀴 푼 뒤에도 재섞으려면 매 회전마다 호출)
+  shuffle(questions);
+
+  lives = 3;
+  score = 0;
+  currentQuestionIndex = 0;
+
+  document.getElementById("lives").textContent = lives;
+  document.getElementById("score").textContent = score;
+
+  showQuestion();
+}
+
+// 현재 문제 표시
+function showQuestion() {
+  // 모든 문제를 한 바퀴 다 풀었으면 다시 무작위 출제(무한 반복)
+  if (currentQuestionIndex >= questions.length) {
+    shuffle(questions);
+    currentQuestionIndex = 0;
+  }
+
+  let q = questions[currentQuestionIndex];
+  const questionText = document.getElementById("questionText");
+  const choicesDiv = document.getElementById("choices");
+
+  // 보기 표시 전, 무작위 순서로 4지선다 shuffle
+  let indices = [0,1,2,3];
+  shuffle(indices);
+
+  questionText.innerHTML = q.statement;
+  choicesDiv.innerHTML = "";
+
+  // 문제별 시간 제한(하 난이도면 Infinity)
+  if (timePerQuestion === Infinity) {
+    document.getElementById("energyBar").style.display = "none";
+  } else {
+    document.getElementById("energyBar").style.display = "block";
+    startEnergyBar(timePerQuestion);
+  }
+
+  // 각 보기 버튼 생성 (여기서 idx는 원본 옵션 배열의 인덱스)
+  indices.forEach(idx => {
+    let btn = document.createElement("button");
+    btn.innerHTML = q.options[idx];
+    btn.onclick = () => {
+      stopEnergyBar(); // 정답 클릭 시 남은 시간 중단
+      checkAnswer(q, idx, indices);
+    };
+    choicesDiv.appendChild(btn);
+  });
+
+  // 새 수식 렌더링
+  MathJax.typeset();
+}
+
+// 문제별 타이머(에너지바)
+let energyTimer = null;
+let currentWidth = 100; // 가로폭 100%에서 시작
+
+function startEnergyBar(seconds) {
+  stopEnergyBar();
+  currentWidth = 100;
+  document.getElementById("energyFill").style.width = currentWidth + "%";
+
+  let step = 100 / seconds; // 초당 에너지바 감소폭
+
+  energyTimer = setInterval(() => {
+    currentWidth -= step;
+    if (currentWidth <= 0) {
+      currentWidth = 0;
+      document.getElementById("energyFill").style.width = "0%";
+      stopEnergyBar();
+      timeOver();
+      return;
+    }
+    document.getElementById("energyFill").style.width = currentWidth + "%";
+  }, 1000);
+}
+
+function stopEnergyBar() {
+  if (energyTimer) {
+    clearInterval(energyTimer);
+    energyTimer = null;
+  }
+}
+
+function timeOver() {
+  // 시간 초과 시 오답 처리 및 기회 차감
+  lives--;
+  document.getElementById("lives").textContent = lives;
+  alert("시간이 초과되었습니다! 기회 1 소모");
+  if (lives <= 0) {
+    endGame();
+    return;
+  }
+  // 다음 문제로 이동
+  currentQuestionIndex++;
+  showQuestion();
+}
+
+// 정답 체크 (여기서 chosenIndex는 원본 옵션 배열에서의 인덱스)
+function checkAnswer(q, chosenIndex, shuffledIndices) {
+  if (chosenIndex === q.correctIndex) {
+    alert("정답입니다!");
+    // 난이도별 점수 추가
+    if (timePerQuestion === 20)      score += 20;
+    else if (timePerQuestion === 30) score += 15;
+    else if (timePerQuestion === 40) score += 13;
+    else                             score += 10; // 하 난이도
+    document.getElementById("score").textContent = score;
+  } else {
+    lives--;
+    document.getElementById("lives").textContent = lives;
+    let correctChoiceText = q.options[q.correctIndex];
+    alert("틀렸습니다!\n정답: " + correctChoiceText);
+    if (lives <= 0) {
+      endGame();
+      return;
+    }
+  }
+  currentQuestionIndex++;
+  showQuestion();
+}
+
+function endGame() {
+  stopEnergyBar();
+  clearInterval(totalTimerInterval);
+
+  document.getElementById("quizContainer").style.display = "none";
+  document.getElementById("finalScore").textContent = score;
+  document.getElementById("gameOverScreen").style.display = "block";
+}
+
+// 점수 전송
+function sendScore() {
+  const name = document.getElementById("playerName").value.trim();
+  saveData("다항식의 계산", name, score, totalElapsed);
+}
+
+// 서버에 점수 전송하는 함수 (문제에서 주어진 예시 그대로 사용)
+async function saveData(game, name, score, elapsedTime) {
+  const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+  const requestData = {
+    game,
+    name,
+    score: parseInt(score, 10),
+    elapsedTime: parseInt(elapsedTime, 10)
+  };
+
+  try {
+    const response = await fetch(FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestData)
+    });
+
+    const responseData = await response.json();
+
+    if (response.ok) {
+      document.getElementById('response').innerText =
+        "성공: " + JSON.stringify(responseData, null, 2);
+    } else {
+      document.getElementById('response').innerText =
+        "오류: " + JSON.stringify(responseData, null, 2);
+    }
+  } catch (error) {
+    console.error('요청 실패:', error);
+    document.getElementById('response').innerText =
+      "네트워크 오류: " + error.message;
+  }
+}
+</script>
+</body>
+</html>
